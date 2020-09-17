@@ -3,7 +3,8 @@ const express = require("express");
 const ejs = require("ejs");
 const bodyParser = require("body-parser");
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
+const bcrypt = require("bcrypt");
+const saltRounds = 10;
 const app = express();
 
 app.use(express.static("public"));
@@ -19,11 +20,6 @@ const userSchema = new mongoose.Schema({
 })
 
 
-/////////////// ENCRYPTION USING mongoose-encryption /////////////
-userSchema.plugin(encrypt, { secret: process.env.SECKEY, encryptedFields: ["password"] });
-/////////////// ENCRYPTION USING mongoose-encryption /////////////
-
-
 const User = new mongoose.model("User", userSchema);
 /////////////// END MONGOOSE //////////////////////////////
 
@@ -36,15 +32,21 @@ app.get("/register", function(req, res) {
     res.render("register")
 })
 app.post("/register", function(req, res) {
-    let email = req.body.username;
-    let password = req.body.password;
-    const newUser = new User({
-        email: email,
-        password: password
-    });
-    newUser.save(function(err) {
+    bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
         if (!err) {
-            res.render("secrets")
+            let email = req.body.username;
+            let password = hash;
+            const newUser = new User({
+                email: email,
+                password: password
+            });
+            newUser.save(function(err) {
+                if (!err) {
+                    res.render("secrets")
+                }
+            });
+        } else {
+            console.log(err);
         }
     });
 
@@ -55,19 +57,26 @@ app.get("/login", function(req, res) {
 })
 app.post("/login", function(req, res) {
     const email = req.body.username;
-    const password = req.body.password;
-
     User.findOne({email : email}, function(err, userFound) {
         if (!err) {
             if (userFound) {
-                if (userFound.password === password) {
-                    res.render("secrets");
-                } else {
-                    console.log("Your username or the password is incorrect. Please try again");
-                }
+                bcrypt.compare(req.body.password, userFound.password, function(err, result) {
+                    if (!err) {
+                        if (result == true) {
+                            res.render("secrets")
+                        } else {
+                            console.log("Your password is incorrect. Please try again")
+                        }
+                    } else {
+                        console.log(err);
+                    }
+                });
+            } else {
+                console.log("Your email/username is incorrect. Please try again")
             }
         }
     })
+
 })
 
 app.listen(3000, function() {
